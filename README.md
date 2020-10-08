@@ -1,1 +1,1 @@
-# postgresql_to_knex
+# postgresql-to-knex
