@@ -1,0 +1,6 @@
+# IntellijIdea files
+node_modules/
+*.iml
+.idea
+node_modules/
+out
