@@ -2,7 +2,7 @@
   "name": "postgresql-to-knex",
   "version": "1.0.0",
   "description": "PostgreSQL to Knex converter",
-  "main": "index.js",
+  "main": "src/main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
