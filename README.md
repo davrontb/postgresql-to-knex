@@ -42,4 +42,4 @@ Note, this package is in the development process. INSERT, UPDATE, DELETE queries
 ## Authors
 Tursunov Davronbek
 email: davron.tursunov.2014@mail.ru
-repository: https://github.com/davrontb/postgresql-to-knex
+repository: https://github.com/davrontb
