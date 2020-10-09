@@ -1,13 +1,13 @@
 {
-  "name": "knexParser",
+  "name": "postgresql-to-knex",
   "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "description": "PostgreSQL to Knex converter",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
+  "author": "Davronek Tursunov <davron.tursunov.2014@mail.ru",
   "license": "ISC",
   "dependencies": {
     "lodash": "^4.17.20",
