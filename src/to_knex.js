@@ -920,17 +920,17 @@ const selectWrapperKnex = (node) => {
         if (element.indexOf("knex") !== -1) {
             const firstVar = element.split(' AS ');
             if (firstVar.length === 1) {
-                output.push(node);
+                output.push(element);
             } else {
                 output.push(firstVar[0] + '.as(' + `\`${firstVar[1]}\`` + '), ');
             }
         } else {
-            if (element.indexOf("(") === -1 && element.split('.').length === 2) {
+            if (element.indexOf("(") === -1 && (element.split('.').length === 2 || element.split(' AS ').length === 2)) {
                 output.push('`');
                 output.push(element);
                 output.push('`, ');
             } else {
-                if (element === '*' || element.split(' ').length === 1) {
+                if ((element === '*' || element.split(' ').length === 1) && element.indexOf("(") === -1) {
                     output.push('`');
                     output.push(element);
                     output.push('`, ');
@@ -1563,7 +1563,7 @@ function havingStarter(node) {
             let ce = conditionExists(splittedCondition[k], wh);
             let cnb = conditionNotBetween(splittedCondition[k], wh);
             let cb = conditionBetween(splittedCondition[k], wh);
-            // let cr = conditionRaw(splittedCondition[k], wh)
+            let cr = conditionRaw(splittedCondition[k], wh)
 
             if (co) {
                 output.push(co);
@@ -1589,8 +1589,8 @@ function havingStarter(node) {
                 cb = prefixAdderHaving(cb, 'Between');
                 output.push(cb)
             } else {
-                // cr = prefixAdded(cr, 'Raw');
-                // output.push(cr)
+                cr = prefixAdderHaving(cr, 'Raw');
+                output.push(cr)
             }
         }
     }
