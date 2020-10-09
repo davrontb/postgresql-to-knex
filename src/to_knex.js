@@ -193,8 +193,7 @@ class ToKnex {
                                     const operator = this.deparse(node.name[1]);
                                     output.push(`OPERATOR(${schema}.${operator})`);
                                 } else {*/
-                output.push(this.deparse(node.name[0]));/*
-                }*/
+                output.push(this.deparse(node.name[0]));
 
                 if (node.rexpr) {
                     output.push(parens(this.deparse(node.rexpr)));
