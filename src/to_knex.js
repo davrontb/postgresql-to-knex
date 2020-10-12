@@ -27,6 +27,10 @@ const fail = (type, node) => {
     throw new Error((0, _util.format)('Unhandled %s node: %s', type, JSON.stringify(node)));
 };
 
+const removerBrackets = (node) => {
+    if(node[0] === '(' && node[node.length -1] === ')')
+        return node.slice(1,-1)
+}
 const _slicedToArray = function () {
     function sliceIterator(arr, i) {
         var _arr = [];
@@ -166,6 +170,53 @@ class ToKnex {
         return this.deparseNodes(nodes).join(separator);
     }
 
+    convertTypeName(typeName, size) {
+        switch (typeName) {
+            case 'bpchar':
+                if (size != null) {
+                    return 'char';
+                }
+                // return `pg_catalog.bpchar` below so that the following is symmetric
+                // SELECT char 'c' = char 'c' AS true
+                return 'pg_catalog.bpchar';
+            case 'varchar':
+                return 'varchar';
+            case 'numeric':
+                return 'numeric';
+            case 'bool':
+                return 'boolean';
+            case 'int2':
+                return 'smallint';
+            case 'int4':
+                return 'int';
+            case 'int8':
+                return 'bigint';
+            case 'real':case 'float4':
+                return 'real';
+            case 'float8':
+                return 'pg_catalog.float8';
+            case 'text':
+                // SELECT EXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True
+                return 'pg_catalog.text';
+            case 'date':
+                return 'pg_catalog.date';
+            case 'time':
+                return 'time';
+            case 'timetz':
+                return 'pg_catalog.timetz';
+            case 'timestamp':
+                return 'timestamp';
+            case 'timestamptz':
+                return 'pg_catalog.timestamptz';
+            case 'interval':
+                return 'interval';
+            case 'bit':
+                return 'bit';
+            default:
+                throw new Error((0, _util.format)('Unhandled data type: %s', typeName));
+        }
+    }
+
     quote(value) {
         if (value == null) {
             return null;
@@ -193,7 +244,8 @@ class ToKnex {
                                     const operator = this.deparse(node.name[1]);
                                     output.push(`OPERATOR(${schema}.${operator})`);
                                 } else {*/
-                output.push(this.deparse(node.name[0]));
+                output.push(this.deparse(node.name[0]));/*
+                }*/
 
                 if (node.rexpr) {
                     output.push(parens(this.deparse(node.rexpr)));
@@ -357,23 +409,23 @@ class ToKnex {
 
     ['RangeVar'](node, context) {
         const output = [];
-        /*
-                if (node.inhOpt === 0) {
-                    output.push('ONLY');
-                }
 
-                if (node.relpersistence === 'u') {
-                    output.push('UNLOGGED');
-                }
+        if (node.inhOpt === 0) {
+            output.push('ONLY');
+        }
 
-                if (node.relpersistence === 't') {
-                    output.push('TEMPORARY');
-                }
+        if (node.relpersistence === 'u') {
+            output.push('UNLOGGED');
+        }
 
-                if (node.schemaname != null) {
-                    output.push(this.quote(node.schemaname));
-                    output.push('.');
-                }*/
+        if (node.relpersistence === 't') {
+            output.push('TEMPORARY');
+        }
+
+        if (node.schemaname != null) {
+            output.push(this.quote(node.schemaname));
+            output.push('.');
+        }
 
         output.push(this.quote(node.relname));
 
@@ -382,6 +434,18 @@ class ToKnex {
         }
 
         return output.join(' ');
+    }
+
+    ['Null'](node) {
+        return 'NULL';
+    }
+
+    ['RowExpr'](node) {
+        if (node.row_format === 2) {
+            return parens(this.list(node.args));
+        }
+
+        return (0, _util.format)('ROW(%s)', this.list(node.args));
     }
 
     ['SelectStmt'](node, context) {
@@ -1209,18 +1273,14 @@ const conditionIn = (node, name) => {
             node.split('(')[1].split(')')[0]
 
             const firstVar = node.split(' IN ')[0];
-            const secondVar = node.split(' IN ')[1];
+            const secondVar = removerBrackets(node.split(' IN ')[1]);
+
 
             if (firstVar[0] === `'`)
                 output.push(`knex.raw('?', [${firstVar}]),`)
             else
                 output.push(`"${firstVar}",`)
 
-
-            /* if (secondVar[1] === `.`)
-                output.push(secondVar)
-            else
-                output.push(secondVar.replace('(', '[').replace(')', ']'))*/
             output.push('[')
             output.push(secondVar)
             output.push(']')
@@ -1253,18 +1313,16 @@ const conditionNotIn = (node, name) => {
             node.split('(')[1].split(')')[0]
 
             const firstVar = node.split(' NOT IN ')[0];
-            const secondVar = node.split(' NOT IN ')[1];
+            const secondVar = removerBrackets(node.split(' NOT IN ')[1]);
 
             if (firstVar[0] === `'`)
                 output.push(`knex.raw('?', [${firstVar}]),`)
             else
                 output.push(`"${firstVar}",`)
 
-
-            if (secondVar[1] === `.`)
-                output.push(secondVar)
-            else
-                output.push(secondVar.replace('(', '[').replace(')', ']'))
+            output.push('[')
+            output.push(secondVar)
+            output.push(']')
 
             output.push(')')
             break;
@@ -1290,8 +1348,10 @@ const conditionExists = (node, name) => {
             output.push(name);
             node.split('(')[1].split(')')[0]
 
-            const firstVar = node.split('EXISTS ')[1];
+            const firstVar = removerBrackets(node.split('EXISTS ')[1]);
             output.push(firstVar)
+            output.push(')')
+
             break;
         }
     }
@@ -1320,7 +1380,8 @@ const conditionNotExists = (node, name) => {
             output.push(name);
             node.split('(')[1].split(')')[0]
 
-            const firstVar = node.split('NOT (EXISTS ')[1];
+
+            const firstVar = removerBrackets(node.split('NOT (EXISTS ')[1]);
             output.push(firstVar)
             break;
         }
@@ -1456,7 +1517,7 @@ function whereStarter(node) {
                 cn = prefixAdded(cn, 'Not');
                 output.push(cn);
             } else if (cni) {
-                cni = prefixAdded(cni, 'In');
+                cni = prefixAdded(cni, 'NotIn');
                 output.push(cni)
             } else if (ci) {
                 ci = prefixAdded(ci, 'In')
@@ -1513,7 +1574,7 @@ function joinStarter(node) {
                 cn = prefixAdder(cn, 'Not');
                 output.push(cn);
             } else if (cni) {
-                cni = prefixAdder(cni, 'In');
+                cni = prefixAdder(cni, 'NotIn');
                 output.push(cni)
             } else if (ci) {
                 ci = prefixAdder(ci, 'In')
@@ -1570,7 +1631,7 @@ function havingStarter(node) {
                 cn = prefixAdderHaving(cn, 'Not');
                 output.push(cn);
             } else if (cni) {
-                cni = prefixAdderHaving(cni, 'In');
+                cni = prefixAdderHaving(cni, 'NotIn');
                 output.push(cni)
             } else if (ci) {
                 ci = prefixAdderHaving(ci, 'In')

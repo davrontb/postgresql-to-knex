@@ -10,6 +10,9 @@ Use the package manager [npm](https://www.npmjs.com/) to install postgresql-to-k
 npm i postgresql-to-knex
 ```
 
+## Description
+
+postgresql-to-knex is a library to accelerate the project development process. Usually, many developers first write SQL queries than convert that code to knex. Sometimes SQL queries are a long line of code and it is difficult to convert that code into knex. postgresql-to-knex library can help developers with this problem. The developer can pass the SQL query to the library function and get knex code.
 ## Example
 ```javascript
 const to_knex = require('postgresql-to-knex')
@@ -40,6 +43,6 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 Note, this package is in the development process. INSERT, UPDATE, DELETE queries haven't been implemented yet.
 
 ## Authors
-Tursunov Davronbek
-email: davron.tursunov.2014@mail.ru
-repository: https://github.com/davrontb
+Davronbek Tursunov  
+email: davron.tursunov.2014@mail.ru  
+gitHub: https://github.com/davrontb
