@@ -356,6 +356,14 @@ class ToKnex {
         return this.deparse(node.val, context);
     }
 
+    ['A_Indices'](node) {
+        if (node.lidx) {
+            return (0, _util.format)('[%s:%s]', this.deparse(node.lidx), this.deparse(node.uidx));
+        }
+
+        return (0, _util.format)('[%s]', this.deparse(node.uidx));
+    }
+
     ['Alias'](node, context) {
         const name = node.aliasname;
 
@@ -370,6 +378,35 @@ class ToKnex {
         return output.join(' ');
     }
 
+    ['A_Indirection'](node) {
+        const output = [`(${this.deparse(node.arg)})`];
+
+        // TODO(zhm) figure out the actual rules for when a '.' is needed
+        //
+        // select a.b[0] from a;
+        // select (select row(1)).*
+        // select c2[2].f2 from comptable
+        // select c2.a[2].f2[1].f3[0].a1 from comptable
+
+        for (let i = 0; i < node.indirection.length; i++) {
+            const subnode = node.indirection[i];
+
+            if (subnode.String || subnode.A_Star) {
+                const value = subnode.A_Star ? '*' : this.quote(subnode.String.str);
+
+                output.push(`.${value}`);
+            } else {
+                output.push(this.deparse(subnode));
+            }
+        }
+
+        return output.join('');
+    }
+
+    ['A_ArrayExpr'](node) {
+        return (0, _util.format)('ARRAY[%s]', this.list(node.elements));
+    }
+
     ['BoolExpr'](node) {
         switch (node.boolop) {
             case 0:
@@ -381,6 +418,11 @@ class ToKnex {
             default:
                 return fail('BoolExpr', node);
         }
+    }
+
+    ['BitString'](node) {
+        const prefix = node.str[0];
+        return `${prefix}'${node.str.substring(1)}'`;
     }
 
     ['ColumnRef'](node) {
@@ -434,6 +476,15 @@ class ToKnex {
         }
 
         return output.join(' ');
+    }
+
+    ['Float'](node) {
+        // wrap negative numbers in parens, SELECT (-2147483648)::int4 * (-1)::int4
+        if (node.str[0] === '-') {
+            return `(${node.str})`;
+        }
+
+        return node.str;
     }
 
     ['Null'](node) {
@@ -508,11 +559,11 @@ class ToKnex {
             output.push(selectWrapperKnex(ind))
             output.push(')');
         }
-        /*
-                if (node.intoClause) {
-                    output.push('INTO');
-                    output.push(indent(this.deparse(node.intoClause)));
-                }*/
+
+        if (node.intoClause) {
+            output.push('INTO');
+            output.push(indent(this.deparse(node.intoClause)));
+        }
 
         if (node.fromClause) {
             output.push('.from(');
@@ -546,28 +597,28 @@ class ToKnex {
         if (node.havingClause) {
             output.push(havingStarter(indent(this.deparse(node.havingClause))));
         }
-        /*
-                                if (node.windowClause) {
-                                    output.push('WINDOW');
 
-                                    const windows = [];
+        if (node.windowClause) {
+            output.push('WINDOW');
 
-                                    for (let i = 0; i < node.windowClause.length; i++) {
-                                        const w = node.windowClause[i];
-                                        const window = [];
+            const windows = [];
 
-                                        if (w.WindowDef.name) {
-                                            window.push(this.quote(w.WindowDef.name) + ' AS');
-                                        }
+            for (let i = 0; i < node.windowClause.length; i++) {
+                const w = node.windowClause[i];
+                const window = [];
 
-                                        window.push(parens(this.deparse(w, 'window')));
+                if (w.WindowDef.name) {
+                    window.push(this.quote(w.WindowDef.name) + ' AS');
+                }
 
-                                        windows.push(window.join(' '));
-                                    }
+                window.push(parens(this.deparse(w, 'window')));
 
-                                    output.push(windows.join(', '));
-                                }
-                */
+                windows.push(window.join(' '));
+            }
+
+            output.push(windows.join(', '));
+        }
+
         if (node.sortClause) {
 
             output.push('.orderByRaw(`');
@@ -621,6 +672,20 @@ class ToKnex {
         output.push((0, _util.format)('(%s)', this.deparse(node.ctequery)));
         output.push('})')
         return output.join(' ');
+    }
+
+    ['DefElem'](node) {
+        if (node.defname === 'transaction_isolation') {
+            return (0, _util.format)('ISOLATION LEVEL %s', node.arg.A_Const.val.String.str.toUpperCase());
+        }
+
+        if (node.defname === 'transaction_read_only') {
+            return node.arg.A_Const.val.Integer.ival === 0 ? 'READ WRITE' : 'READ ONLY';
+        }
+
+        if (node.defname === 'transaction_deferrable') {
+            return node.arg.A_Const.val.Integer.ival === 0 ? 'NOT DEFERRABLE' : 'DEFERRABLE';
+        }
     }
 
     ['String'](node) {
@@ -804,6 +869,43 @@ class ToKnex {
         return (0, _util.format)('COALESCE(%s)', this.list(node.args));
     }
 
+    ['CollateClause'](node) {
+        const output = [];
+
+        if (node.arg) {
+            output.push(this.deparse(node.arg));
+        }
+
+        output.push('COLLATE');
+
+        if (node.collname) {
+            output.push(this.quote(this.deparseNodes(node.collname)));
+        }
+
+        return output.join(' ');
+    }
+
+    ['IntoClause'](node) {
+        return this.deparse(node.rel);
+    }
+
+    ['ColumnDef'](node) {
+        const output = [this.quote(node.colname)];
+
+        output.push(this.deparse(node.typeName));
+
+        if (node.raw_default) {
+            output.push('USING');
+            output.push(this.deparse(node.raw_default));
+        }
+
+        if (node.constraints) {
+            output.push(this.list(node.constraints, ' '));
+        }
+
+        return _lodash2.default.compact(output).join(' ');
+    }
+
     ['CaseExpr'](node) {
         const output = ['CASE'];
 
@@ -945,6 +1047,234 @@ class ToKnex {
         return output.join(' ');
     }
 
+    ['GroupingFunc'](node) {
+        return 'GROUPING(' + this.list(node.args) + ')';
+    }
+
+    ['MinMaxExpr'](node) {
+        const output = [];
+
+        if (node.op === 0) {
+            output.push('GREATEST');
+        } else {
+            output.push('LEAST');
+        }
+
+        output.push(parens(this.list(node.args)));
+
+        return output.join('');
+    }
+
+    ['NamedArgExpr'](node) {
+        const output = [];
+
+        output.push(node.name);
+        output.push(':=');
+        output.push(this.deparse(node.arg));
+
+        return output.join(' ');
+    }
+
+    ['VariableSetStmt'](node) {
+        if (node.kind === 4) {
+            return (0, _util.format)('RESET %s', node.name);
+        }
+
+        if (node.kind === 3) {
+            const name = {
+                'TRANSACTION': 'TRANSACTION',
+                'SESSION CHARACTERISTICS': 'SESSION CHARACTERISTICS AS TRANSACTION'
+            }[node.name];
+
+            return (0, _util.format)('SET %s %s', name, this.deparseNodes(node.args, 'simple').join(', '));
+        }
+
+        if (node.kind === 1) {
+            return (0, _util.format)('SET %s TO DEFAULT', node.name);
+        }
+
+        return (0, _util.format)('SET %s%s = %s', node.is_local ? 'LOCAL ' : '', node.name, this.deparseNodes(node.args, 'simple').join(', '));
+    }
+
+    ['VariableShowStmt'](node) {
+        return (0, _util.format)('SHOW %s', node.name);
+    }
+
+    ['WindowDef'](node, context) {
+        const output = [];
+
+        if (context !== 'window') {
+            if (node.name) {
+                output.push(node.name);
+            }
+        }
+
+        const empty = !(node.partitionClause != null) && !(node.orderClause != null);
+
+        const frameOptions = this.deparseFrameOptions(node.frameOptions, node.refname, node.startOffset, node.endOffset);
+
+        if (empty && context !== 'window' && !(node.name != null) && frameOptions.length === 0) {
+            return '()';
+        }
+
+        const windowParts = [];
+
+        let useParens = false;
+
+        if (node.partitionClause) {
+            const partition = ['PARTITION BY'];
+
+            const clause = node.partitionClause.map(item => this.deparse(item));
+
+            partition.push(clause.join(', '));
+
+            windowParts.push(partition.join(' '));
+            useParens = true;
+        }
+
+        if (node.orderClause) {
+            windowParts.push('ORDER BY');
+
+            const orders = node.orderClause.map(item => {
+                return this.deparse(item);
+            });
+
+            windowParts.push(orders.join(', '));
+
+            useParens = true;
+        }
+
+        if (frameOptions.length) {
+            useParens = true;
+            windowParts.push(frameOptions);
+        }
+
+        if (useParens && context !== 'window') {
+            return output.join(' ') + ' (' + windowParts.join(' ') + ')';
+        }
+
+        return output.join(' ') + windowParts.join(' ');
+    }
+
+
+    ['GroupingSet'](node) {
+        switch (node.kind) {
+            case 0:
+                // GROUPING_SET_EMPTY
+                return '()';
+
+            case 1:
+                // GROUPING_SET_SIMPLE
+                return fail('GroupingSet', node);
+
+            case 2:
+                // GROUPING_SET_ROLLUP
+                return 'ROLLUP (' + this.list(node.content) + ')';
+
+            case 3:
+                // GROUPING_SET_CUBE
+                return 'CUBE (' + this.list(node.content) + ')';
+
+            case 4:
+                // GROUPING_SET_SETS
+                return 'GROUPING SETS (' + this.list(node.content) + ')';
+
+            default:
+                return fail('GroupingSet', node);
+        }
+    }
+
+    ['ParamRef'](node) {
+        if (node.number >= 0) {
+            return ['$', node.number].join('');
+        }
+        return '?';
+    }
+
+    ['RangeFunction'](node) {
+        const output = [];
+
+        if (node.lateral) {
+            output.push('LATERAL');
+        }
+
+        const funcs = [];
+
+        for (let i = 0; i < node.functions.length; i++) {
+            const funcCall = node.functions[i];
+            const call = [this.deparse(funcCall[0])];
+
+            if (funcCall[1] && funcCall[1].length) {
+                call.push((0, _util.format)('AS (%s)', this.list(funcCall[1])));
+            }
+
+            funcs.push(call.join(' '));
+        }
+
+        const calls = funcs.join(', ');
+
+        if (node.is_rowsfrom) {
+            output.push(`ROWS FROM (${calls})`);
+        } else {
+            output.push(calls);
+        }
+
+        if (node.ordinality) {
+            output.push('WITH ORDINALITY');
+        }
+
+        if (node.alias) {
+            output.push(this.deparse(node.alias));
+        }
+
+        if (node.coldeflist) {
+            const defList = this.list(node.coldeflist);
+
+            if (!node.alias) {
+                output.push(` AS (${defList})`);
+            } else {
+                output.push(`(${defList})`);
+            }
+        }
+
+        return output.join(' ');
+    }
+
+    ['RangeSubselect'](node, context) {
+        let output = '';
+
+        if (node.lateral) {
+            output += 'LATERAL ';
+        }
+
+        output += parens(this.deparse(node.subquery));
+
+        if (node.alias) {
+            return output + ' ' + this.deparse(node.alias);
+        }
+
+        return output;
+    }
+
+    ['RangeTableSample'](node) {
+        const output = [];
+
+        output.push(this.deparse(node.relation));
+        output.push('TABLESAMPLE');
+        output.push(this.deparse(node.method[0]));
+
+        if (node.args) {
+            output.push(parens(this.list(node.args)));
+        }
+
+        if (node.repeatable) {
+            output.push('REPEATABLE(' + this.deparse(node.repeatable) + ')');
+        }
+
+        return output.join(' ');
+    }
+
+
     type(names, args) {
         var _names$map = names.map(name => this.deparse(name)),
             _names$map2 = _slicedToArray(_names$map, 2);
@@ -974,6 +1304,189 @@ class ToKnex {
 
         return mods(res, args);
     }
+
+    deparseFrameOptions(options, refName, startOffset, endOffset) {
+        const FRAMEOPTION_NONDEFAULT = 0x00001; // any specified?
+        const FRAMEOPTION_RANGE = 0x00002; // RANGE behavior
+        const FRAMEOPTION_ROWS = 0x00004; // ROWS behavior
+        const FRAMEOPTION_BETWEEN = 0x00008; // BETWEEN given?
+        const FRAMEOPTION_START_UNBOUNDED_PRECEDING = 0x00010; // start is U. P.
+        const FRAMEOPTION_END_UNBOUNDED_PRECEDING = 0x00020; // (disallowed)
+        const FRAMEOPTION_START_UNBOUNDED_FOLLOWING = 0x00040; // (disallowed)
+        const FRAMEOPTION_END_UNBOUNDED_FOLLOWING = 0x00080; // end is U. F.
+        const FRAMEOPTION_START_CURRENT_ROW = 0x00100; // start is C. R.
+        const FRAMEOPTION_END_CURRENT_ROW = 0x00200; // end is C. R.
+        const FRAMEOPTION_START_VALUE_PRECEDING = 0x00400; // start is V. P.
+        const FRAMEOPTION_END_VALUE_PRECEDING = 0x00800; // end is V. P.
+        const FRAMEOPTION_START_VALUE_FOLLOWING = 0x01000; // start is V. F.
+        const FRAMEOPTION_END_VALUE_FOLLOWING = 0x02000; // end is V. F.
+
+        if (!(options & FRAMEOPTION_NONDEFAULT)) {
+            return '';
+        }
+
+        const output = [];
+
+        if (refName != null) {
+            output.push(refName);
+        }
+
+        if (options & FRAMEOPTION_RANGE) {
+            output.push('RANGE');
+        }
+
+        if (options & FRAMEOPTION_ROWS) {
+            output.push('ROWS');
+        }
+
+        const between = options & FRAMEOPTION_BETWEEN;
+
+        if (between) {
+            output.push('BETWEEN');
+        }
+
+        if (options & FRAMEOPTION_START_UNBOUNDED_PRECEDING) {
+            output.push('UNBOUNDED PRECEDING');
+        }
+
+        if (options & FRAMEOPTION_START_UNBOUNDED_FOLLOWING) {
+            output.push('UNBOUNDED FOLLOWING');
+        }
+
+        if (options & FRAMEOPTION_START_CURRENT_ROW) {
+            output.push('CURRENT ROW');
+        }
+
+        if (options & FRAMEOPTION_START_VALUE_PRECEDING) {
+            output.push(this.deparse(startOffset) + ' PRECEDING');
+        }
+
+        if (options & FRAMEOPTION_START_VALUE_FOLLOWING) {
+            output.push(this.deparse(startOffset) + ' FOLLOWING');
+        }
+
+        if (between) {
+            output.push('AND');
+
+            if (options & FRAMEOPTION_END_UNBOUNDED_PRECEDING) {
+                output.push('UNBOUNDED PRECEDING');
+            }
+
+            if (options & FRAMEOPTION_END_UNBOUNDED_FOLLOWING) {
+                output.push('UNBOUNDED FOLLOWING');
+            }
+
+            if (options & FRAMEOPTION_END_CURRENT_ROW) {
+                output.push('CURRENT ROW');
+            }
+
+            if (options & FRAMEOPTION_END_VALUE_PRECEDING) {
+                output.push(this.deparse(endOffset) + ' PRECEDING');
+            }
+
+            if (options & FRAMEOPTION_END_VALUE_FOLLOWING) {
+                output.push(this.deparse(endOffset) + ' FOLLOWING');
+            }
+        }
+
+        return output.join(' ');
+    }
+
+    deparseInterval(node) {
+        const type = ['interval'];
+
+        if (node.arrayBounds != null) {
+            type.push('[]');
+        }
+
+        if (node.typmods) {
+            const typmods = node.typmods.map(item => this.deparse(item));
+
+            let intervals = this.interval(typmods[0]);
+
+            // SELECT interval(0) '1 day 01:23:45.6789'
+            if (node.typmods[0] && node.typmods[0].A_Const && node.typmods[0].A_Const.val.Integer.ival === 32767 && node.typmods[1] && node.typmods[1].A_Const != null) {
+                intervals = [`(${node.typmods[1].A_Const.val.Integer.ival})`];
+            } else {
+                intervals = intervals.map(part => {
+                    if (part === 'second' && typmods.length === 2) {
+                        return 'second(' + _lodash2.default.last(typmods) + ')';
+                    }
+
+                    return part;
+                });
+            }
+
+            type.push(intervals.join(' to '));
+        }
+
+        return type.join(' ');
+    }
+
+    interval(mask) {
+        // ported from https://github.com/lfittl/pg_query/blob/master/lib/pg_query/deparse/interval.rb
+        if (this.MASKS == null) {
+            this.MASKS = {
+                0: 'RESERV',
+                1: 'MONTH',
+                2: 'YEAR',
+                3: 'DAY',
+                4: 'JULIAN',
+                5: 'TZ',
+                6: 'DTZ',
+                7: 'DYNTZ',
+                8: 'IGNORE_DTF',
+                9: 'AMPM',
+                10: 'HOUR',
+                11: 'MINUTE',
+                12: 'SECOND',
+                13: 'MILLISECOND',
+                14: 'MICROSECOND',
+                15: 'DOY',
+                16: 'DOW',
+                17: 'UNITS',
+                18: 'ADBC',
+                19: 'AGO',
+                20: 'ABS_BEFORE',
+                21: 'ABS_AFTER',
+                22: 'ISODATE',
+                23: 'ISOTIME',
+                24: 'WEEK',
+                25: 'DECADE',
+                26: 'CENTURY',
+                27: 'MILLENNIUM',
+                28: 'DTZMOD'
+            };
+        }
+
+        if (this.BITS == null) {
+            this.BITS = _lodash2.default.invert(this.MASKS);
+        }
+
+        if (this.INTERVALS == null) {
+            this.INTERVALS = {};
+            this.INTERVALS[1 << this.BITS.YEAR] = ['year'];
+            this.INTERVALS[1 << this.BITS.MONTH] = ['month'];
+            this.INTERVALS[1 << this.BITS.DAY] = ['day'];
+            this.INTERVALS[1 << this.BITS.HOUR] = ['hour'];
+            this.INTERVALS[1 << this.BITS.MINUTE] = ['minute'];
+            this.INTERVALS[1 << this.BITS.SECOND] = ['second'];
+            this.INTERVALS[1 << this.BITS.YEAR | 1 << this.BITS.MONTH] = ['year', 'month'];
+            this.INTERVALS[1 << this.BITS.DAY | 1 << this.BITS.HOUR] = ['day', 'hour'];
+            this.INTERVALS[1 << this.BITS.DAY | 1 << this.BITS.HOUR | 1 << this.BITS.MINUTE] = ['day', 'minute'];
+            this.INTERVALS[1 << this.BITS.DAY | 1 << this.BITS.HOUR | 1 << this.BITS.MINUTE | 1 << this.BITS.SECOND] = ['day', 'second'];
+            this.INTERVALS[1 << this.BITS.HOUR | 1 << this.BITS.MINUTE] = ['hour', 'minute'];
+            this.INTERVALS[1 << this.BITS.HOUR | 1 << this.BITS.MINUTE | 1 << this.BITS.SECOND] = ['hour', 'second'];
+            this.INTERVALS[1 << this.BITS.MINUTE | 1 << this.BITS.SECOND] = ['minute', 'second'];
+
+            // utils/timestamp.h
+            // #define INTERVAL_FULL_RANGE (0x7FFF)
+            this.INTERVALS[this.INTERVAL_FULL_RANGE = '32767'] = [];
+        }
+
+        return this.INTERVALS[mask.toString()];
+    }
+
 }
 
 const selectWrapperKnex = (node) => {
