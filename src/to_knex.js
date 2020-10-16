@@ -28,8 +28,8 @@ const fail = (type, node) => {
 };
 
 const removerBrackets = (node) => {
-    if(node[0] === '(' && node[node.length -1] === ')')
-        return node.slice(1,-1)
+    if (node[0] === '(' && node[node.length - 1] === ')')
+        return node.slice(1, -1)
 }
 const _slicedToArray = function () {
     function sliceIterator(arr, i) {
@@ -191,7 +191,8 @@ class ToKnex {
                 return 'int';
             case 'int8':
                 return 'bigint';
-            case 'real':case 'float4':
+            case 'real':
+            case 'float4':
                 return 'real';
             case 'float8':
                 return 'pg_catalog.float8';
@@ -238,14 +239,16 @@ class ToKnex {
                 if (node.lexpr) {
                     output.push(parens(this.deparse(node.lexpr)));
                 }
-                /*
-                                if (node.name.length > 1) {
-                                    const schema = this.deparse(node.name[0]);
-                                    const operator = this.deparse(node.name[1]);
-                                    output.push(`OPERATOR(${schema}.${operator})`);
-                                } else {*/
-                output.push(this.deparse(node.name[0]));/*
-                }*/
+
+                if (node.name.length > 1) {
+                    const schema = this.deparse(node.name[0]);
+                    const operator = this.deparse(node.name[1]);
+                    output.push(`OPERATOR(${schema}.${operator})`);
+                } else {
+
+                }
+                output.push(this.deparse(node.name[0]));
+
 
                 if (node.rexpr) {
                     output.push(parens(this.deparse(node.rexpr)));
@@ -440,11 +443,11 @@ class ToKnex {
     ['ResTarget'](node, context) {
         if (context === 'select') {
             return compact([this.deparse(node.val), this.quote(node.name)]).join(' AS ');
-        } /*else if (context === 'update') {
+        } else if (context === 'update') {
             return compact([node.name, this.deparse(node.val)]).join(' = ');
         } else if (!(node.val != null)) {
             return this.quote(node.name);
-        }*/
+        }
 
         return fail('ResTarget', node);
     }
@@ -576,17 +579,17 @@ class ToKnex {
             const validator = whereStarter(result)
             output.push(validator)
         }
-        /*
-                if (node.valuesLists) {
-                    output.push('VALUES');
 
-                    const lists = node.valuesLists.map(list => {
-                        return `(${list.map(v => this.deparse(v)).join(', ')})`;
-                    });
+        if (node.valuesLists) {
+            output.push('VALUES');
 
-                    output.push(lists.join(', '));
-                }
-*/
+            const lists = node.valuesLists.map(list => {
+                return `(${list.map(v => this.deparse(v)).join(', ')})`;
+            });
+
+            output.push(lists.join(', '));
+        }
+
         if (node.groupClause) {
             output.push('.groupByRaw(`');
             output.push(indent(node.groupClause.map(e => this.deparse(e, 'group')).join(',\n')));
@@ -710,7 +713,75 @@ class ToKnex {
         output.push(this.deparse(node.larg));
 
         if (node.isNatural) {
-            output.push('NATURAL');
+            output.push('.joinRaw(`NATURAL');
+
+            let join = null;
+
+            switch (true) {
+                case node.jointype === 0 && node.quals != null:
+                    join = 'INNER JOIN';
+                    break;
+
+                case node.jointype === 0 &&
+                !node.isNatural &&
+                !(node.quals != null) &&
+                !(node.usingClause != null):
+                    join = 'CROSS JOIN';
+                    break;
+
+                case node.jointype === 0:
+                    join = 'JOIN';
+                    break;
+
+                case node.jointype === 1:
+                    join = 'LEFT OUTER JOIN';
+                    break;
+
+                case node.jointype === 2:
+                    join = 'FULL OUTER JOIN';
+                    break;
+
+                case node.jointype === 3:
+                    join = 'RIGHT OUTER JOIN';
+                    break;
+
+                default:
+                    fail('JoinExpr', node);
+                    break;
+            }
+
+            output.push(join);
+
+            if (node.rarg) {
+                // wrap nested join expressions in parens to make the following symmetric:
+                // select * from int8_tbl x cross join (int4_tbl x cross join lateral (select x.f1) ss)
+                if (node.rarg.JoinExpr != null && !(node.rarg.JoinExpr.alias != null)) {
+                    output.push(`(${this.deparse(node.rarg)})`);
+                } else {
+                    output.push(this.deparse(node.rarg));
+                }
+            }
+
+            if (node.quals) {
+                output.push(`ON ${this.deparse(node.quals)}`);
+            }
+
+            if (node.usingClause) {
+                const using = this.quote(this.deparseNodes(node.usingClause)).join(', ');
+
+                output.push(`USING (${using})`);
+            }
+
+            const wrapped =
+                node.rarg.JoinExpr != null || node.alias
+                    ? '(' + output.join(' ') + ')'
+                    : output.join(' ');
+
+            if (node.alias) {
+                return wrapped + ' ' + this.deparse(node.alias);
+            }
+
+            return wrapped+'`)';
         }
 
         let join = null;
@@ -1596,6 +1667,7 @@ const selectWrapper = (node) => {
 
     return output.join('');
 }
+
 const splitter = (node) => {
     let index = 0;
     let output = [];
@@ -1704,39 +1776,6 @@ const conditionOperator = (node, name) => {
             break;
         }
 
-        /*
-                if (
-                    (node[i] === ' ' && node[i + 1] === 'I' && node[i + 2] === 'L' && node[i + 3] === 'I' && node[i + 4] === 'K' && node[i + 5] === 'E' && node[i + 6] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === 'L' && node[i + 2] === 'I' && node[i + 3] === 'K' && node[i + 4] === 'E' & node[i + 5] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '<' && node[i + 2] === '=' && node[i + 3] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '>' && node[i + 2] === '=' && node[i + 3] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '<' && node[i + 2] === '>' && node[i + 3] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '!' && node[i + 2] === '=' && node[i + 3] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '=' && node[i + 2] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '>' && node[i + 2] === ' ') ||
-                    (node[i] === ' ' && node[i + 1] === '<' && node[i + 2] === ' ')
-                ) {
-                    output.push(name);
-
-                    const firstVar = node.split(' ')[0];
-                    const operator = node.split(' ')[1];
-                    const secondVar = node.split(' ')[2];
-                    if (firstVar[0] === `'`)
-                        output.push(`knex.raw('?', [${firstVar}]),`)
-                    else
-                        output.push(`"${firstVar}",`)
-
-                    output.push(`"${operator}",`)
-
-                    if (secondVar[0] === `'`)
-                        output.push(`knex.raw("?", [${secondVar}])`)
-                    else
-                        output.push(`"${secondVar}"`)
-
-                    output.push(')')
-
-                    break;
-                }*/
     }
 
     return output.join('')
