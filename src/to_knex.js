@@ -101,14 +101,31 @@ const validateFrom = (node) => {
             checker = true;
             const firstVar = node.slice(0, k)
             const secondVar = node.slice(k)
-            node = '`' + firstVar.split(', ').join('`,`') + '`)' + secondVar;
+
+            if (firstVar[0] === 'k' && firstVar[1] === 'n' && firstVar[2] === 'e' && firstVar[3] === 'x' && firstVar[4] === '.') {
+                node = firstVar + ')' + secondVar;
+            } else {
+                node = '`' + firstVar.split(', ').join('`,`') + '`)' + secondVar;
+            }
             break;
         }
     }
     if (checker === false) {
-        node = '`' + node.split(', ').join('`,`') + '`)';
+        if (node[0] === 'k' && node[1] === 'n' && node[2] === 'e' && node[3] === 'x' && node[4] === '.') {
+            node = node + ')';
+        } else {
+            node = '`' + node.split(', ').join('`,`') + '`)';
+        }
     }
     return node;
+}
+
+const validateFromForSubQuery = (node, element) => {
+    if (node[0] === 'k' && node[1] === 'n' && node[2] === 'e' && node[3] === 'x' && node[4] === '.') {
+        node = node + ')' + element ? element : "";
+    } else {
+        node = '`' + node.split(', ').join('`,`') + '`)' + element ? element : "";
+    }
 }
 
 const parens = string => {
@@ -228,6 +245,21 @@ class ToKnex {
         }
 
         return value;
+    }
+
+    subQueryAlias (node, context) {
+        const name = node.Alias.aliasname;
+
+        const output = ['.as(`'];
+
+        if (node.colnames) {
+            output.push(name + parens(this.list(node.colnames)));
+        } else {
+            output.push(this.quote(name));
+        }
+
+        output.push('`)');
+        return output.join('');
     }
 
     ['A_Expr'](node, context) {
@@ -377,7 +409,6 @@ class ToKnex {
         } else {
             output.push(this.quote(name));
         }
-
         return output.join(' ');
     }
 
@@ -517,14 +548,11 @@ class ToKnex {
             }
         } else {
             output.push(parens(this.deparse(node.larg)));
-
-            // const sets = ['NONE', 'UNION', 'INTERSECT', 'EXCEPT'];
             const sets = ['NONE', '.union', '.intersect', 'EXCEPT'];
 
             output.push(sets[node.op]);
 
             if (node.all) {
-                // output.push('ALL');
                 output.push('All');
             }
             output.push('([')
@@ -547,7 +575,6 @@ class ToKnex {
         }
 
         if (node.targetList) {
-            // output.push(indent(node.targetList.map(e => this.deparse(e, 'select')).join(', ')));
             let dis = '';
             for (let k = output.length - 1; k >= 0; k--)
                 if (output[k] === '.select(') {
@@ -781,7 +808,7 @@ class ToKnex {
                 return wrapped + ' ' + this.deparse(node.alias);
             }
 
-            return wrapped+'`)';
+            return wrapped + '`)';
         }
 
         let join = null;
@@ -1035,7 +1062,6 @@ class ToKnex {
             case node.subLinkType === 4:
                 return (0, _util.format)('(%s)', this.deparse(node.subselect));
             case node.subLinkType === 5:
-                // TODO(zhm) what is this?
                 return fail('SubLink', node);
             // MULTIEXPR_SUBLINK
             // format('(%s)', @deparse(node.subselect))
@@ -1321,7 +1347,8 @@ class ToKnex {
         output += parens(this.deparse(node.subquery));
 
         if (node.alias) {
-            return output + ' ' + this.deparse(node.alias);
+            return output + ' ' + this.subQueryAlias(node.alias);
+            // return output + ' ' + this.deparse(node.alias);
         }
 
         return output;
@@ -1638,7 +1665,6 @@ const prefixAdderHaving = (str, pr) => {
     }
     return str;
 }
-
 
 const insertInto = (str, index, value) => {
     return str.substr(0, index) + value + str.substr(index);
