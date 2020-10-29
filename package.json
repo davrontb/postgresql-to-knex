@@ -1,6 +1,6 @@
 {
   "name": "postgresql-to-knex",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "PostgreSQL to Knex converter",
   "main": "src/main.js",
   "scripts": {
@@ -16,5 +16,13 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/davrontb/postgresql-to-knex"
-  }
+  },
+  "keywords": [
+    "postgresql",
+    "knex",
+    "knexjs",
+    "converter",
+    "sql",
+    "query"
+  ]
 }

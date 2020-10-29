@@ -31,6 +31,7 @@ const removerBrackets = (node) => {
     if (node[0] === '(' && node[node.length - 1] === ')')
         return node.slice(1, -1)
 }
+
 const _slicedToArray = function () {
     function sliceIterator(arr, i) {
         var _arr = [];
@@ -195,6 +196,7 @@ class ToKnex {
                 }
                 // return `pg_catalog.bpchar` below so that the following is symmetric
                 // SELECT char 'c' = char 'c' AS true
+                return 'char';
                 return 'pg_catalog.bpchar';
             case 'varchar':
                 return 'varchar';
@@ -212,19 +214,23 @@ class ToKnex {
             case 'float4':
                 return 'real';
             case 'float8':
+                return 'float8';
                 return 'pg_catalog.float8';
             case 'text':
                 // SELECT EXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True
+                return 'text';
                 return 'pg_catalog.text';
             case 'date':
                 return 'pg_catalog.date';
             case 'time':
                 return 'time';
             case 'timetz':
+                return 'timetz';
                 return 'pg_catalog.timetz';
             case 'timestamp':
                 return 'timestamp';
             case 'timestamptz':
+                return 'timestamptz';
                 return 'pg_catalog.timestamptz';
             case 'interval':
                 return 'interval';
@@ -247,7 +253,7 @@ class ToKnex {
         return value;
     }
 
-    subQueryAlias (node, context) {
+    subQueryAlias(node, context) {
         const name = node.Alias.aliasname;
 
         const output = ['.as(`'];
@@ -1253,7 +1259,6 @@ class ToKnex {
         return output.join(' ') + windowParts.join(' ');
     }
 
-
     ['GroupingSet'](node) {
         switch (node.kind) {
             case 0:
@@ -1371,7 +1376,6 @@ class ToKnex {
 
         return output.join(' ');
     }
-
 
     type(names, args) {
         var _names$map = names.map(name => this.deparse(name)),
@@ -1584,7 +1588,6 @@ class ToKnex {
 
         return this.INTERVALS[mask.toString()];
     }
-
 }
 
 const selectWrapperKnex = (node) => {
@@ -2235,6 +2238,5 @@ function havingStarter(node) {
 
     return output.join('');
 }
-
 
 module.exports = ToKnex;
