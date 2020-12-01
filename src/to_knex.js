@@ -1053,6 +1053,10 @@ class ToKnex {
         return output.join(' ');
     }
 
+    ['SetToDefault'](node) {
+        return 'DEFAULT';
+    }
+
     ['SubLink'](node) {
         switch (true) {
             case node.subLinkType === 0:
@@ -1068,7 +1072,9 @@ class ToKnex {
             case node.subLinkType === 4:
                 return (0, _util.format)('(%s)', this.deparse(node.subselect));
             case node.subLinkType === 5:
-                return fail('SubLink', node);
+                // situation: UPDATE accounts SET (contact_first_name, contact_last_name) = (SELECT first_name, last_name FROM salesmen WHERE salesmen.id = accounts.sales_id);
+                return (0, _util.format)('(%s)', this.deparse(node.subselect));
+            // return fail('SubLink', node);
             // MULTIEXPR_SUBLINK
             // format('(%s)', @deparse(node.subselect))
             case node.subLinkType === 6:
@@ -1375,6 +1381,72 @@ class ToKnex {
         }
 
         return output.join(' ');
+    }
+
+    ['MultiAssignRef'](node) {
+        const output = [];
+        output.push(this.deparse(node.source));
+        return output.join(' ');
+    }
+
+    ['UpdateStmt'](node) {
+        const output = [];
+        output.push('knex(`');
+        output.push(this.deparse(node.relation));
+        output.push('`)');
+
+        if (node.targetList && node.targetList.length) {
+            output.push('.update({');
+            if (
+                node.targetList[0].ResTarget &&
+                node.targetList[0].ResTarget.val &&
+                node.targetList[0].ResTarget.val.MultiAssignRef
+            ) {
+                const result = node.targetList.map(target => target.ResTarget.name + ` = ${this.deparse(node.targetList[0].ResTarget.val)}`);
+                output.push(
+                    updateCondition(result)
+                );
+
+            } else {
+                const result = node.targetList.map(target => this.deparse(target, 'update'))
+                output.push(
+                    updateCondition(result)
+                );
+            }
+            output.push('})');
+        }
+
+        if (node.fromClause) {
+            output.push('.from(');
+            const result = node.fromClause.map(from => this.deparse(from)).join(', ')
+            output.push(validateFrom(result));
+        }
+
+        if (node.whereClause) {
+            const result = indent(this.deparse(node.whereClause));
+            const validator = whereStarter(result)
+            output.push(validator)
+        }
+
+        if (node.returningList) {
+            output.push('.returning([');
+            output.push(
+                node.returningList
+                    .map(
+                        returning =>
+                            '`' +
+                            this.deparse(returning.ResTarget.val) +
+                            (returning.ResTarget.name
+                                ? ' AS ' + this.quote(returning.ResTarget.name)
+                                : '')
+                            + '`'
+                    )
+                    .join(',')
+            );
+            output.push('])');
+        }
+
+        return output.join('');
     }
 
     type(names, args) {
@@ -1720,7 +1792,7 @@ const splitter = (node) => {
     return output;
 }
 
-conditionOperatorSplitter = (node, name) => {
+const conditionOperatorSplitter = (node, name) => {
     const output = [];
 
     const firstVar = node.split(name)[0];
@@ -2237,6 +2309,15 @@ function havingStarter(node) {
     }
 
     return output.join('');
+}
+
+function updateCondition(node){
+    const result = [];
+    node.forEach(element => {
+        result.push(element.replace(' = ', ' : '));
+    })
+
+    return result.join(', ')
 }
 
 module.exports = ToKnex;
