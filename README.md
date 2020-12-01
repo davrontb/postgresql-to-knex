@@ -40,7 +40,7 @@ console.log(to_knex("WITH RECURSIVE r AS ( SELECT 1 AS i, 1 AS factorial UNION S
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. 
 
-Note, this package is in the development process. INSERT, UPDATE, DELETE queries haven't been implemented yet.
+Note, this package is in the development process. INSERT, DELETE queries haven't been implemented yet.
 
 ## Authors
 Davronbek Tursunov  
